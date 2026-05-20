@@ -234,7 +234,7 @@ cat /etc/nginx/conf.d/stream/tcp-proxy.conf
 stream {
     map $server_port $destination_port {
         default 10001;
-	10005 10100;
+	    10005 10100;
         ~^(\d+)$ $1;
     }
 
