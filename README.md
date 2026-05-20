@@ -214,8 +214,12 @@ docker logs -f otelcol-fwd | grep -iE 'logs|error|http'
 - That Service usually exposes **`8686`** and **`10100`** (not the edge port itself).
 
   `kubectl -n observo-client get svc data-plane-gateway-service -o yaml | grep targetPort`
+
+
+  ```
   targetPort: 8686
   targetPort: 10100
+  ```
 
 
   The stream proxy is often configured `proxy_pass <svc>:<same_port>`, so for the proxy to work it needs a
