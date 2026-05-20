@@ -6,7 +6,7 @@ for svc in logs metrics trace; do
   grpcurl \
     -import-path /tmp/otlp \
     -proto opentelemetry/proto/collector/$svc/v1/${svc}_service.proto \
-    adeo-eu-west-1.observo.ai:443 \
+    <ingest URL>:443 \
     list opentelemetry.proto.collector.$svc.v1.${svc^}Service 2>&1 | sed 's/^/  /'
 done
 
