@@ -211,8 +211,14 @@ docker logs -f otelcol-fwd | grep -iE 'logs|error|http'
 
 - The edge port (e.g. `:10005`) is typically an **nginx stream proxy** to an internal Kubernetes
   `data-plane-gateway-service`.
-- That Service usually exposes **`8686`** and **`10100`** (not the edge port itself). The stream
-  proxy is often configured `proxy_pass <svc>:<same_port>`, so for the proxy to work it needs a
+- That Service usually exposes **`8686`** and **`10100`** (not the edge port itself).
+
+  `kubectl -n observo-client get svc data-plane-gateway-service -o yaml | grep targetPort`
+  targetPort: 8686
+  targetPort: 10100
+
+
+  The stream proxy is often configured `proxy_pass <svc>:<same_port>`, so for the proxy to work it needs a
   `map $server_port $destination_port { 10005 10100; ... }` entry — otherwise connections to
   unknown ports on the ClusterIP get RST by kube-proxy.
 - The actual OTLP/HTTP receiver inside the data-plane Pod listens on **`:10100`**. Hitting it
