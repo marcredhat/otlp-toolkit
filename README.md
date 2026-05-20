@@ -225,6 +225,37 @@ docker logs -f otelcol-fwd | grep -iE 'logs|error|http'
   The stream proxy is often configured `proxy_pass <svc>:<same_port>`, so for the proxy to work it needs a
   `map $server_port $destination_port { 10005 10100; ... }` entry — otherwise connections to
   unknown ports on the ClusterIP get RST by kube-proxy.
+
+
+Example: for a Data Pipeline source listening on 10005, I added `10005 10100;`
+
+```
+cat /etc/nginx/conf.d/stream/tcp-proxy.conf
+stream {
+    map $server_port $destination_port {
+        default 10001;
+	10005 10100;
+        ~^(\d+)$ $1;
+    }
+
+    ## Stream supports TCP and UDP
+    server {
+        listen 10001-10009;
+        proxy_pass 10.43.xx.xx:$destination_port;
+        proxy_connect_timeout 1s;
+    }
+
+    server {
+        listen 10001-10009 udp reuseport;
+        proxy_pass 10.43.xx.xx:$destination_port;
+        proxy_connect_timeout 1s;
+    }
+```
+
+```
+sudo nginx -t && sudo systemctl reload nginx
+```
+ 
 - The actual OTLP/HTTP receiver inside the data-plane Pod listens on **`:10100`**. Hitting it
   directly is the fastest way to verify the rest of the pipeline.
 - nginx in this layout is **server-TLS only** (server.crt/server.key), no mTLS.
