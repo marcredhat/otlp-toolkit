@@ -1,0 +1,45 @@
+# Local OTel Collector that:
+#   - receives OTLP/HTTP + OTLP/gRPC on the standard ports (4318, 4317)
+#   - forwards everything via otlphttp to a downstream OTLP/HTTP receiver
+#   - mirrors everything to debug log for inspection
+#
+# Run with:
+#   docker run -d --rm --name otelcol-fwd \
+#       -p 4318:4318 -p 4317:4317 \
+#       -v $PWD/otelcol-forward.yaml:/etc/otelcol/config.yaml \
+#       otel/opentelemetry-collector:latest \
+#       --config=/etc/otelcol/config.yaml
+#
+# Adjust the otlphttp `endpoint` to your real downstream.
+# host.docker.internal is the Mac/Windows Docker bridge to the host.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  otlphttp:
+    endpoint: "http://host.docker.internal:10005"
+    tls:
+      insecure: true
+  debug:
+    verbosity: detailed
+
+service:
+  telemetry:
+    logs:
+      level: debug
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [otlphttp, debug]
+    traces:
+      receivers: [otlp]
+      exporters: [otlphttp, debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [otlphttp, debug]
