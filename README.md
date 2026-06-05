@@ -11,6 +11,10 @@ and a runbook for diagnosing why ingestion is failing.
 | `send_otlp_http_proto.py` | OTLP/HTTP **protobuf+gzip** (what the otel-collector `otlphttp` exporter sends). Supports logs and traces. mTLS-capable. **Use this first.** |
 | `send_otlp_http_json.py`  | OTLP/HTTP **JSON** (logs/traces/metrics). Useful for manual debugging and packet inspection. |
 | `send_otlp_grpc.py`       | OTLP/gRPC for logs/traces/metrics. Useful when the receiver is gRPC-only. |
+| `send_otlp_grpcurl.sh`    | OTLP/gRPC logs via **`grpcurl`** — no Python, no venv. Wraps `LogsService/Export`. |
+| `eps_alert_test.sh`       | Sustained-EPS traffic generator (bash + grpcurl) for alert testing (HIGH for N min, drop to LOW for M min). |
+| `eps_alert_test.py`       | Same EPS step-down pattern as the bash version, but uses a **single long-lived OTLP/gRPC channel** via the Python OTel SDK. Preferred for higher EPS / sustained runs. |
+| `diag_otlp_grpc.sh`       | One-shot diagnostic (DNS → TCP → TLS → ALPN → gRPC Export) for any OTLP/gRPC endpoint. |
 | `otelcol-forward.yaml`    | Local OTel Collector config: receives on `4318`/`4317`, forwards to downstream via `otlphttp`, mirrors to debug log. |
 | `requirements.txt`        | Pip dependencies. |
 
@@ -40,6 +44,76 @@ python3 send_otlp_grpc.py --host backend --port 4317 --insecure --signal logs
 ```
 
 Switch signals with `--signal logs|traces|metrics` (metrics only in JSON and gRPC scripts).
+
+---
+
+## OTLP/gRPC via grpcurl (no Python required)
+
+```bash
+# one-time: install grpcurl (mac)
+brew install grpcurl
+# linux:  curl -sSL https://github.com/fullstorydev/grpcurl/releases/latest/download/grpcurl_$(uname -s)_$(uname -m).tar.gz | tar xz -C ~/.local/bin
+
+# single batch (5 records)
+./send_otlp_grpcurl.sh --endpoint otlp.example.com:4317 --count 5
+
+# with bearer auth
+./send_otlp_grpcurl.sh --endpoint host:4317 --header "authorization: Bearer $TOKEN" --count 10
+
+# plaintext local collector
+./send_otlp_grpcurl.sh --endpoint localhost:4317 --insecure --count 1
+```
+
+First run clones `github.com/open-telemetry/opentelemetry-proto` into
+`~/.cache/otlp-toolkit/proto` (grpcurl needs the descriptors because
+managed endpoints rarely enable gRPC reflection). Subsequent runs
+are instant.
+
+## EPS alert testing (any OTLP backend)
+
+Two equivalent drivers — pick one:
+
+- `eps_alert_test.sh` — bash + per-second `grpcurl` invocation. Zero-dependency
+  outside of `grpcurl` + `git`.
+- `eps_alert_test.py` — Python + single long-lived gRPC channel via the official
+  OTel SDK. **Preferred for sustained or high-EPS runs** (lower per-batch
+  overhead, real error visibility from the SDK retry path).
+
+Both drive the same step-down pattern designed to trigger "sudden volume
+drop" alerts:
+
+```bash
+# defaults: 50 EPS for 10 min, then 25 EPS (HIGH/2) for 5 min
+./eps_alert_test.sh
+
+# custom: 200 EPS x 10 min -> 100 EPS x 5 min
+./eps_alert_test.sh --endpoint otlp.example.com:4317 --high 200 --low 100
+
+# quick smoke (1 min + 1 min) before committing to a long run
+./eps_alert_test.sh --high 50 --high-min 1 --low-min 1
+
+# Python variant against an OTLP/gRPC backend with bearer auth:
+OTLP_TOKEN=xxxxx ./eps_alert_test.py \
+    --endpoint otlp.example.com:4317 --token "$OTLP_TOKEN" \
+    --high 50 --high-min 10 --low-min 5
+
+# Python variant against a local collector (plaintext, no token):
+./eps_alert_test.py --endpoint localhost:4317 --insecure \
+    --high 20 --high-min 1 --low-min 1
+```
+
+Each phase prints a progress line every 10 batches. Per-batch grpcurl
+output is captured to `/tmp/eps_alert_test-<run_id>.log` so the foreground
+stays readable.
+
+Filter in the destination by either:
+
+```
+service.name == "eps-alert-test-YYYYMMDD-HHMM"
+run_id       starts-with "YYYYMMDD-HHMMSS-"
+```
+
+(both are stamped on every record and on every resource).
 
 ---
 
